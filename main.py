@@ -30,8 +30,17 @@ async def ping(ctx):
     await ctx.send("pong")
 
 
+# TODO: richtiger fix
+def fix_encoding(s):
+    st = s
+    for ch in range(192,256):
+        st = st.replace("\\x"+str(hex(ch))[2:],chr(ch))
+    return st
+
+
 @client.slash_command(description="Zeigt den nächsten Gegner in der Liga an.")
 async def nextgame(ctx):
+#def test():
     league = 2
     site = str(urllib.request.urlopen(f'https://schachligen.de/cgi-bin/admin/hp.cgi?action=termine_anzeigen&liga_id={league}').readlines())
     soup = BeautifulSoup(site,"html.parser")
@@ -59,19 +68,42 @@ async def nextgame(ctx):
         if str(t.next_element) == opponent:
             id = t.attrs["value"]
             break
+    #https://schachligen.de/cgi-bin/admin/hp.cgi?action=spielort&liga_id=2&mannschaft_id=24
+    site = str(urllib.request.urlopen(f'https://schachligen.de/cgi-bin/admin/hp.cgi?action=spielort&liga_id=2&mannschaft_id={id}').readlines())
+    soup = BeautifulSoup(site,"html.parser")
+    address = ", ".join(list(map(lambda x:x.decode_contents(), soup.find_all(attrs={"width":"80%"})))[1:4])
+
     site = str(urllib.request.urlopen(f'https://schachligen.de/cgi-bin/admin/hp.cgi?liga_id={league}&mannschaft_id={id}&action=mannschaft_anzeigen').readlines())
     soup = BeautifulSoup(site,"html.parser")
     players = soup.find("tr",attrs={"bgcolor":"silver"}).find_next("tr").find_all_next("tr")
     playerlist = []
+
     for player in players:
         if not player.has_attr("bgcolor"):break
         if player.attrs["bgcolor"]!="white":break
         playerlist.append(list(map(lambda x:str(x.contents[0].contents[0]),player.contents[:4]+[player.contents[-1]])))
+        playerlist[-1][1] = fix_encoding(playerlist[-1][1])
+        playerlist[-1][2] = fix_encoding(playerlist[-1][2])
+        #print(playerlist[-1][1:3])
         playerlist[-1][-1]+=str(player.contents[-1].contents[0].contents[1].contents[0])
-    #print()
-    await ctx.send(f"Das nächste Spiel ist ein {'Heimspiel' if col.contents[0].contents[0]==team else 'Auswärtsspiel'} am {datestr} gegen {opponent}.")
-    await ctx.send("Gegnerische Aufstellung:\n```"+tabulate(playerlist, headers=['Brett', 'Vorname', 'Nachname', 'DWZ', 'Punkte'], tablefmt='orgtbl')+"```")
 
+    games = ""
+    site = "".join(list(map(lambda x:x.decode("utf-8"),urllib.request.urlopen("http://web20.s158.goserver.host/partien/").readlines())))
+    soup = BeautifulSoup(site,"html.parser")
+    leagues = list(map(lambda x:x.decode_contents().replace(" ","%20"), soup.find_all("a")))
+    for league in leagues:
+        try:
+            url = f"http://web20.s158.goserver.host/partien/{league}/{opponent.replace(' ','%20')}"
+            urllib.request.urlopen(url)
+            games = f"http://web20.s158.goserver.host/partien/{league}/{opponent.replace(' ','%20')}"
+            #print(games)
+        except:pass
+
+    msg1 = f"Das nächste Spiel ist ein {'Heimspiel' if col.contents[0].contents[0]==team else 'Auswärtsspiel'} am {datestr} gegen {opponent}.{'' if col.contents[0].contents[0]==team else ' Addresse: '+address}"
+    msg2 = "Gegnerische Aufstellung:\n```"+tabulate(playerlist, headers=['Brett', 'Vorname', 'Nachname', 'DWZ', 'Punkte'], tablefmt='orgtbl')+"```"
+    msg3 = ("Spieledatenbank: "+games)if games!="" else ""
+    await ctx.send(msg1+"\n"+msg2+"\n"+msg3)
+#test()
 # @client.command()
 # async def genFEN(ctx,FEN):
 #     pass
